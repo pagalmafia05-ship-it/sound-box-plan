@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Subscription Plans</title>
+  <style>
+    :root{font-family:Inter, system-ui, Arial, sans-serif}
+    body{margin:0;padding:24px;background:#f6f8fb;color:#0b1a2b}
+    .container{max-width:900px;margin:0 auto}
+    h1{text-align:center}
+    .plans{display:grid;grid-template-columns:1fr;gap:18px;margin-top:18px}
+    .card{background:white;border-radius:12px;padding:18px;box-shadow:0 6px 18px rgba(18,38,63,0.08)}
+    .price{font-size:20px;font-weight:700}
+    .buy{display:inline-block;margin-top:12px;padding:10px 16px;border-radius:8px;background:#3b82f6;color:white;text-decoration:none;cursor:pointer}
+    .list{margin-top:10px}
+    .list li{margin:6px 0}
+    /* modal */
+    .modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,6,23,0.5);z-index:999;}
+    .modal-inner{background:white;padding:18px;border-radius:8px;max-width:520px;width:94%}
+    .close{float:right;cursor:pointer}
+    /* admin */
+    .admin-panel{display:flex;gap:12px;flex-direction:column}
+    textarea{width:100%;height:220px;font-family:monospace}
+    .btn{padding:8px 12px;border-radius:8px;border:0;cursor:pointer}
+    .btn-primary{background:#10b981;color:white}
+    .btn-ghost{background:#e6eef8}
+    footer{margin-top:28px;text-align:center;color:#6b7280}
+    @media(min-width:720px){.plans{grid-template-columns:1fr 1fr}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Subscription Plans</h1>
+
+    <div id="app">
+      <div id="plans" class="plans"></div>
+    </div>
+
+    <footer>
+      <small>For admin: add <code>#admin</code> at the end of URL to open admin panel.</small>
+    </footer>
+  </div>
+
+  <!-- Modal -->
+  <template id="modal-template">
+    <div class="modal" id="modal">
+      <div class="modal-inner">
+        <span class="close" id="modal-close">✕</span>
+        <div id="modal-body"></div>
+      </div>
+    </div>
+  </template>
+
+  <script>
+  /*
+    Single-file subscription site with built-in admin.
+    - Admin route: add #admin to URL
+    - Admin password (hardcoded as requested): shadowxyz
+    - Plans are stored in localStorage under key 'plans_config'.
+    - Admin can export JSON to commit to GitHub or copy-paste.
+
+    SECURITY NOTE (IMPORTANT): The admin password is stored in client-side code and is NOT secure.
+    This approach is suitable only for testing or simple use. For production, use a backend and proper authentication.
+  */
+
+  const DEFAULT_CONFIG = {
+    imageUrl: 'assets/buy-now-image.jpg', // put your image in repo under /assets and update path if needed
+    plans: [
+      {
+        id: 'basic',
+        title: 'Basic',
+        price: '₹240/3 month',
+        oldPrice: '₹999/3 month',
+        highlights: ['200 Amount Limit per day','72% Sound Box','800 SMS Sending','Realtime Transaction','50000 Transaction Limit']
+      },
+      {
+        id: 'business',
+        title: 'Business Features',
+        price: '₹312/6 month',
+        oldPrice: '₹1,416/6 month',
+        highlights: ['500 Amount Limit per day','100% Sound Box','2000 SMS Sending','Realtime Transaction','100000 Transaction Limit']
+      }
+    ]
+  };
+
+  const ADMIN_PASSWORD = 'shadowxyz'; // as requested (INSECURE)
+  const STORAGE_KEY = 'plans_config';
+
+  function loadConfig(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return DEFAULT_CONFIG;
+      return JSON.parse(raw);
+    }catch(e){
+      console.error('config load error', e);
+      return DEFAULT_CONFIG;
+    }
+  }
+
+  function saveConfig(cfg){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg, null, 2));
+  }
+
+  function renderPlans(){
+    const cfg = loadConfig();
+    const container = document.getElementById('plans');
+    container.innerHTML = '';
+    cfg.plans.forEach(plan=>{
+      const card = document.createElement('div');card.className='card';
+      card.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-weight:700">${escapeHtml(plan.title)}</div>
+            <div class="price">${escapeHtml(plan.price)} <small style="text-decoration:line-through;color:#9ca3af">${escapeHtml(plan.oldPrice||'')}</small></div>
+          </div>
+          <div>
+            <button class="buy" data-plan="${escapeHtml(plan.id)}">Buy Now</button>
+          </div>
+        </div>
+        <ul class="list">${(plan.highlights||[]).map(h=>`<li>✅ ${escapeHtml(h)}</li>`).join('')}</ul>
+      `;
+      container.appendChild(card);
+    });
+
+    // attach handlers
+    Array.from(document.querySelectorAll('.buy')).forEach(btn=>{
+      btn.addEventListener('click', e=>{
+        const cfg = loadConfig();
+        openBuyModal(cfg.imageUrl, e.currentTarget.dataset.plan);
+      });
+    });
+  }
+
+  function openBuyModal(imageUrl, planId){
+    const tpl = document.getElementById('modal-template');
+    const node = tpl.content.cloneNode(true);
+    const modal = node.querySelector('.modal');
+    const body = node.getElementById('modal-body');
+
+    body.innerHTML = `<h3>Confirm Purchase</h3>
+      <p>Plan: <strong>${escapeHtml(planId)}</strong></p>
+      <div style="text-align:center;margin-top:8px">
+        <img src="${escapeHtml(imageUrl)}" alt="promo" style="max-width:100%;border-radius:8px" onerror="this.style.display='none'">
+      </div>
+      <p style="margin-top:12px">(This is a static demo — connect to payment gateway to accept real payments.)</p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button class="btn btn-ghost" id="cancel">Close</button>
+        <button class="btn btn-primary" id="confirm">Proceed to Pay</button>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    modal.querySelector('#modal-close').addEventListener('click', ()=>modal.remove());
+    modal.querySelector('#cancel').addEventListener('click', ()=>modal.remove());
+    modal.querySelector('#confirm').addEventListener('click', ()=>{
+      alert('Simulated payment flow. Replace with real payment integration.');
+      modal.remove();
+    });
+  }
+
+  // Admin panel
+  function renderAdmin(){
+    const root = document.getElementById('app');
+    root.innerHTML = '';
+    const cfg = loadConfig();
+
+    const adminDiv = document.createElement('div');
+    adminDiv.className='admin-panel card';
+
+    adminDiv.innerHTML = `
+      <h2>Admin Panel</h2>
+      <div id="admin-area"></div>
+    `;
+    root.appendChild(adminDiv);
+
+    const adminArea = document.getElementById('admin-area');
+
+    // login screen
+    const pw = prompt('Enter admin password:');
+    if(pw !== ADMIN_PASSWORD){
+      adminArea.innerHTML = '<div style="color:red">Incorrect password. Reload and try again.</div>';
+      return;
+    }
+
+    const editor = document.createElement('div');
+    editor.innerHTML = `
+      <label><strong>Config JSON</strong></label>
+      <textarea id="cfg-json"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-primary" id="save">Save (localStorage)</button>
+        <button class="btn btn-ghost" id="download">Download JSON</button>
+        <button class="btn btn-ghost" id="reset">Reset to Default</button>
+      </div>
+      <p style="margin-top:8px">Image file: add your image to the repository under <code>assets/</code> (or any path) and update <code>imageUrl</code> in the JSON. Example: <code>assets/my-buy-image.jpg</code></p>
+    `;
+    adminArea.appendChild(editor);
+
+    const ta = document.getElementById('cfg-json');
+    ta.value = JSON.stringify(cfg, null, 2);
+
+    document.getElementById('save').addEventListener('click', ()=>{
+      try{
+        const parsed = JSON.parse(ta.value);
+        saveConfig(parsed);
+        alert('Saved to localStorage. Changes are live. To persist to GitHub, use Download JSON and commit to repo.');
+        renderPlans();
+      }catch(e){
+        alert('Invalid JSON: '+e.message);
+      }
+    });
+
+    document.getElementById('download').addEventListener('click', ()=>{
+      const blob = new Blob([ta.value], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;a.download='plans-config.json';a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('reset').addEventListener('click', ()=>{
+      if(!confirm('Reset to default config?')) return;
+      saveConfig(DEFAULT_CONFIG);
+      ta.value = JSON.stringify(DEFAULT_CONFIG, null, 2);
+      renderPlans();
+    });
+  }
+
+  // small helper
+  function escapeHtml(s){
+    return (s||'').toString().replace(/[&<>\"']/g,function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  // init
+  (function(){
+    // if URL contains #admin => show admin panel
+    if(location.hash === '#admin'){
+      renderAdmin();
+    }else{
+      renderPlans();
+    }
+  })();
+
+  </script>
+</body>
+</html>
